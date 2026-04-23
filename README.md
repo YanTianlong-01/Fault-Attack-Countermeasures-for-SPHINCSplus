@@ -365,6 +365,3 @@ pip install -e .
 
 The attack implementation in this artifact is based on the open-source code from [https://github.com/AymericGenet/SPHINCSplus-FA](https://github.com/AymericGenet/SPHINCSplus-FA). We thank the authors for making their code publicly available.
 
-## License
-
-The provided code is for **academic review purposes only**, consistent with the TCHES artifact evaluation guidelines. The SPHINCS+ implementation is derived from the [SPHINCS+ reference implementation](https://sphincs.org/) (public domain). The ChipWhisperer integration code follows the ChipWhisperer framework's GPL v3 license.
