@@ -1,3 +1,19 @@
-numpy==1.23.4
-pycryptodome==3.16.0
-sympy==1.11.1
+# Python dependencies for this artifact.
+# Install with:  pip install -r requirements.txt
+#
+# Notes:
+#  * numpy lower bound is set for Python 3.12 compatibility
+#    (see https://github.com/numpy/numpy/issues/23808).
+#  * Tested on Python 3.10 and 3.12.
+#  * chipwhisperer requires a connected board for the experiment scripts
+#    (cwfaultexp.py / cwsetup.py); the analysis notebooks and SPHINCSplus.py
+#    do NOT need it and run on any machine.
+
+# --- experiment control (ChipWhisperer hardware required) ---
+chipwhisperer==5.6.1
+
+# --- analysis notebooks + offline verification (no hardware needed) ---
+numpy>=1.26.4
+pycryptodome>=3.16.0
+sympy>=1.11.1
+jupyter>=1.0.0

@@ -1,2 +1,19 @@
-*/.DS_Store
+# macOS
 .DS_Store
+**/.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# Build artifacts
+*.hex
+*.elf
+*.bin
+*.map
+*.lss
+*.sym
+*.eep
+objdir-*/

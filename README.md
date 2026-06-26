@@ -104,44 +104,48 @@ pip install -e .
 
 The firmware implements a **single-layer** version of SPHINCS+ signing, targeting a specific XMSS subtree layer to speed up the signing process (full SPHINCS+ signing on STM32F3 takes ~28 seconds per signature, too long for practical fault injection).
 
-#### 2.1 Prepare the build environment
+#### 2.1 Integrate the SPHINCS+ sources into the ChipWhisperer SDK
 
-The firmware depends on the ChipWhisperer firmware directory structure. Copy (or symlink) the provided `hardware/victims/firmware/` contents into your ChipWhisperer SDK's firmware directory:
+The firmware reuses the ChipWhisperer build system (`Makefile.inc`, `simpleserial/`, and the per-platform `hal/`), so it must be compiled **inside** the SDK's firmware directory. Two of our files are also patches to that build system:
+
+- `crypto/Makefile.crypto` — adds the `SPHINCSplus` branch to `$(CRYPTO_TARGET)`.
+- `crypto/Makefile.sphincsplus` — the build rules for the SPHINCS+ sources.
+
+> **Important — directory layout.** In ChipWhisperer **5.6.1** the firmware root is `firmware/mcu/` (it contains `Makefile.inc`, `simpleserial/`, `hal/`, `crypto/`, ...). If you are on a newer/different SDK checkout where the layout is `hardware/victims/firmware/`, use that path instead — the steps below are otherwise identical. You can confirm the correct root by checking that it contains a `Makefile.inc` file.
+
+Copy our sources **on top of** the SDK's firmware directory (the `/.` makes `cp` overwrite existing files like `Makefile.crypto`):
 
 ```bash
-# Assuming you are in the artifact root:
-CHIPWHISPERER_DIR=/path/to/chipwhisperer  # <-- adjust this
+# Set this to the SDK firmware directory you confirmed above:
+FW_DIR=/path/to/chipwhisperer/firmware/mcu      # CW 5.6.1
+# FW_DIR=/path/to/chipwhisperer/hardware/victims/firmware   # some newer checkouts
 
-# Copy the crypto library
-cp -r hardware/victims/firmware/crypto \
-      "$CHIPWHISPERER_DIR/hardware/victims/firmware/"
+# From the artifact root:
+cp -r hardware/victims/firmware/crypto/.            "$FW_DIR/crypto/"
+cp -r hardware/victims/firmware/simpleserial-sphincsplus "$FW_DIR/"
 
-# Copy the simpleserial-sphincsplus app
-cp -r hardware/victims/firmware/simpleserial-sphincsplus \
-      "$CHIPWHISPERER_DIR/hardware/victims/firmware/"
+# Sanity check: our patched Makefile.crypto must now contain the SPHINCSplus branch
+grep -c SPHINCSplus "$FW_DIR/crypto/Makefile.crypto"   # should print: 3
 ```
 
-#### 2.2 Build the crypto library
+> **Do not** run `make -f Makefile.sphincsplus` on its own — that file only defines variables and has no build targets, so it will fail with `make: *** No targets.  Stop.` It is automatically pulled in by `Makefile.crypto` when you pass `CRYPTO_TARGET=SPHINCSplus` in the next step.
+
+#### 2.2 Build the firmware
+
+Build from inside the `simpleserial-sphincsplus` directory. The crypto library is compiled automatically as part of this step:
 
 ```bash
-cd "$CHIPWHISPERER_DIR/hardware/victims/firmware/crypto"
-make -f Makefile.sphincsplus
-```
+cd "$FW_DIR/simpleserial-sphincsplus"
 
-This compiles the SPHINCS+ reference implementation adapted for the ChipWhisperer build system.
-
-#### 2.3 Build the firmware
-
-```bash
-cd "$CHIPWHISPERER_DIR/hardware/victims/firmware/simpleserial-sphincsplus"
-
-# Compile for STM32F3 target (as used in the paper)
+# Compile for the STM32F3 target (as used to collect the provided logs)
 make PLATFORM=CW308_STM32F3 CRYPTO_TARGET=SPHINCSplus
 ```
 
-A `simpleserial-sphincsplus-CW308_STM32F3.hex` file will be produced.
+This produces `simpleserial-sphincsplus-CW308_STM32F3.hex` (plus `.elf`/`.bin`/`.map`).
 
-> **Platform note:** The paper used `CW308_STM32F4` (STM32F4 target). The provided firmware code is also compatible with `CW308_STM32F3` (used for log collection). Adjust `PLATFORM` as needed. If using `CW308_STM32F4`, also change `PLATFORM` in `tools/cwsetup.py` accordingly.
+> **Platform note.** The paper used `CW308_STM32F4` (STM32F4 target); the provided firmware code is also compatible with `CW308_STM32F3` (used for log collection). Adjust `PLATFORM` as needed. If you switch to `CW308_STM32F4`, also change `PLATFORM` in `tools/cwsetup.py`.
+>
+> **Toolchain.** Requires `arm-none-eabi-gcc` (Step 1.2) and the SDK `hal/` directory present — both come from a complete ChipWhisperer SDK checkout, which is why Step 2.1 copies into the SDK tree rather than building standalone.
 
 ---
 
@@ -149,29 +153,41 @@ A `simpleserial-sphincsplus-CW308_STM32F3.hex` file will be produced.
 
 With the ChipWhisperer connected and target powered:
 
-```python
-# In tools/cwsetup.py, update fw_folder to your hex file location:
-# fw_folder = "/path/to/chipwhisperer/hardware/victims/firmware/simpleserial-sphincsplus"
+With the ChipWhisperer connected and target powered, flash the firmware:
 
-# Then run:
+```bash
 cd tools
 python3 cwsetup.py
 ```
 
-This connects to the ChipWhisperer, flashes the firmware, and verifies connectivity by reading back `"SPHINCS+\n"` from the target.
+`cwsetup.py` connects to the ChipWhisperer and flashes the firmware produced in Step 2. By default it looks for the `.hex` under the path set by the `CW_FW_FOLDER` environment variable (the `simpleserial-sphincsplus` directory that contains the built `.hex`). Set it to your build directory before running, for example:
+
+```bash
+export CW_FW_FOLDER=/path/to/chipwhisperer/firmware/mcu/simpleserial-sphincsplus
+python3 cwsetup.py
+```
+
+If `CW_FW_FOLDER` is unset, the script will prompt you for the path interactively. After flashing it verifies connectivity by reading back `"SPHINCS+\n"` from the target.
+
+> The experiment runner `cwfaultexp.py` reads the same `CW_FW_FOLDER` variable (see Step 5).
 
 ---
 
 ### Step 4 — Install Python Dependencies
 
+A single `requirements.txt` is provided at the repository root and covers both the experiment scripts and the analysis notebooks:
+
 ```bash
-cd tools
 pip install -r requirements.txt
 ```
 
-Required packages:
+Key packages:
 - `chipwhisperer==5.6.1` (already installed in Step 1)
-- `pycryptodome` (for `Crypto.Hash.SHAKE256`)
+- `pycryptodome` — for `Crypto.Hash.SHAKE256`, used by `SPHINCSplus.py`
+- `numpy`, `sympy` — used by the analysis notebooks / offline verification
+- `jupyter` — to run the notebooks in Step 6
+
+> **Python version.** The `numpy` lower bound is set for Python 3.12 compatibility. The artifact has been tested on Python 3.10 and 3.12.
 
 ---
 
@@ -179,7 +195,7 @@ Required packages:
 
 The main experiment script is `tools/cwfaultexp.py`. It performs the following:
 
-- **Expersiment 1 (`run_exp1`):** Straight signing — injects clock glitches during the signing of a specific XMSS layer to produce faulty signatures and/or faulty subtree roots. This reproduces the **Phase 1** attack.
+- **Experiment 1 (`run_exp1`):** Straight signing — injects clock glitches during the signing of a specific XMSS layer to produce faulty signatures and/or faulty subtree roots. This reproduces the **Phase 1** attack.
 
 
 The paper's experiment logs were produced by `run_exp1` with the following parameters:
@@ -230,25 +246,38 @@ The `run_exp_expl()` function systematically sweeps `ext_offset`, `offset`, and 
 
 ### Step 6 — Analyze the Results
 
-Two Jupyter notebooks are provided in `logs/` to analyze the collected raw log files.
+This step **does not require the ChipWhisperer hardware** — it runs purely on the provided log files, so it can be reproduced on any machine (see "Reproducing Table 6" below).
 
-#### 6.1 Parse and Compare Signatures (`analysis.ipynb`)
+Install Jupyter first if you do not have it (it is also listed in `requirements.txt`):
 
-Open this notebook and point `input_file` to your generated log file:
-
-```python
-input_file = "2025-06-20_09-09-01_SPHINCSplus.txt"
+```bash
+pip install jupyter
 ```
 
-The notebook:
-1. Parses the raw log to extract `(signature, root)` pairs per trial.
-2. Computes the reference (correct) signature and root from the first glitch-free iteration.
-3. Counts the number of **correct**, **faulty-signature-but-correct-root**, and **faulty-root** outcomes.
-4. Computes the fault injection success rate.
+Two Jupyter notebooks are provided in `logs/`:
 
-#### 6.2 Split Log by Trial (`split_log.ipynb`)
+#### 6.1 Reproduce Table 6 (`analysis.ipynb`)
 
-If you ran `N > 1` trials, this notebook splits the combined log file into individual trial files (`*_exp1.txt`, `*_exp2.txt`, ...) for separate analysis.
+This is the main notebook. Open it from the `logs/` directory:
+
+```bash
+cd logs
+jupyter notebook analysis.ipynb   # or: jupyter lab analysis.ipynb
+```
+
+The notebook loads the **combined** raw log (`2025-06-20_09-09-01_SPHINCSplus.txt`) and **automatically splits it by experiment** (on the `Launching experiment` markers), so you do not need any pre-processing. For each of the 5 experiments it:
+
+1. Parses the log to extract `(signature, root)` pairs per iteration (matching the `Received sig ...` / `Received root ...` lines).
+2. Takes the first glitch-free iteration of each experiment as the reference.
+3. Counts **correct**, **faulty-signature (root correct)**, and **faulty-root** outcomes, and computes the Phase-1 fault-injection success rate.
+
+To analyze your own log instead, set the `input_file` variable at the top of the notebook to your `<timestamp>_SPHINCSplus.txt`.
+
+> **If you only want to reproduce the paper's numbers**, just run every cell of `analysis.ipynb` as-is — it ships pointed at the provided log.
+
+#### 6.2 Split a Log by Trial (`split_log.ipynb`)
+
+Optional helper. If you ran `N > 1` trials and want the individual per-experiment files written to disk (`*_exp1.txt`, `*_exp2.txt`, ...), run `split_log.ipynb`. This is not required for `analysis.ipynb`, which already handles the combined log internally.
 
 ---
 
@@ -355,11 +384,16 @@ pip install -e .
 ### Compilation errors on firmware
 
 - Ensure `arm-none-eabi-gcc` is in your PATH.
-- The ChipWhisperer firmware build system requires specific directory paths. Make sure you copied the files to the correct locations under `$CHIPWHISPERER_DIR/hardware/victims/firmware/`.
+- The firmware must be built **inside** the ChipWhisperer SDK firmware tree (which provides `Makefile.inc`, `simpleserial/`, and the `hal/` directory) — see Step 2. Building standalone will fail with missing `Makefile.hal` or `Unknown CRYPTO_TARGET`.
+- `Unknown or blank CRYPTO_TARGET: SPHINCSplus` means the SDK is using its **original** `Makefile.crypto` instead of the patched one — re-run the `cp -r ... crypto/.` command from Step 2.1 (the `/.` overwrites `Makefile.crypto`), then confirm with `grep SPHINCSplus Makefile.crypto`.
 
 ---
 
+## License
 
+This artifact is released under the **MIT License** (see [`LICENSE`](LICENSE)). The SPHINCS+ reference C implementation, the ChipWhisperer framework, and the upstream SPHINCSplus-FA code retain their original copyright and license terms; see the `LICENSE` file for details.
+
+---
 
 ## Acknowledgments
 

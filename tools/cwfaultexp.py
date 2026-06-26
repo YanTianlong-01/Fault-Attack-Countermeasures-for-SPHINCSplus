@@ -63,13 +63,16 @@ pkroot = int.to_bytes(0xfc5429b364889d213a26d5a69986560179dac9c6e20d55f424cee933
 # Open and configure ChipWhisperer
 # =============================================================================
 
-# Path to SPHINCSplus compiled code
-fw_folder = "/home/yantl/project_1/chipwhisperer/firmware/mcu/simpleserial-sphincsplus"
-if REFLASH:
+# Path to the compiled simpleserial-sphincsplus firmware (the folder that
+# contains the built .hex). Set it via the CW_FW_FOLDER environment variable, or
+# leave it empty to be prompted interactively at startup. The path should point
+# at the 'simpleserial-sphincsplus' directory inside your ChipWhisperer SDK
+# firmware tree, e.g. .../chipwhisperer/firmware/mcu/simpleserial-sphincsplus
+fw_folder = os.environ.get("CW_FW_FOLDER", "").strip().strip('"').strip("'")
+if REFLASH and not fw_folder:
+    fw_folder = input("Please enter the path to the 'simpleserial-sphincsplus' folder: ").strip().strip('"').strip("'")
     if not fw_folder:
-        fw_folder = input("Please enter path to 'simpleserial-sphincsplus' folder: ")
-        if not fw_folder:
-            print("Warning: no firmware path detected, skipping relfashing.")
+        print("Warning: no firmware path detected, skipping reflashing.")
 
 # Connects to chipwhisperer and reflash if fw_folder is provided
 print(f"Opening simpleserial-sphincsplus...")
@@ -210,9 +213,6 @@ def run_exp2(target, scope, inplength, N, M, CACHE_SIZE, logged=False):
             #fill_cache(target, scope, cached, f_log=f_log)
 
             collections = {}
-
-            # Program secret seed
-            #simpleserial_logsend(target, 'k', skseed, preamble=f"({idx+1:02d}/{N:02d})", f_log=f_log, p=PRINT_BY_DEFAULT)
 
             # LAUNCH GLITCHES
             for i in range(M):
@@ -363,9 +363,6 @@ def run_exp1(target, scope, inplength, N, M, ext_idx = 0, logged=False):
 
             collections = {}
 
-            # Program secret seed
-            #simpleserial_logsend(target, 'k', skseed, preamble=f"({idx+1:02d}/{N:02d})", f_log=f_log, p=PRINT_BY_DEFAULT)
-
             # LAUNCH GLITCHES
             for i in range(M):
                 # Resets target
@@ -382,12 +379,6 @@ def run_exp1(target, scope, inplength, N, M, ext_idx = 0, logged=False):
                 now = datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")
                 log_info(f"{now}: [{i+1:04d}/{M}] Sending  ... {inp.hex()}, waiting {DURATION*(i/M)} sec ...", f_log=f_log, p=PRINT_BY_DEFAULT)
 
-                # target.simpleserial_write('f', int.to_bytes(0, byteorder="little", length=2))
-                # this_out = target.read()
-                # print(f'this_out: {this_out.encode("latin-1")}')
-                # read_sig(target, 67+8) # test read sig
-                
-                
                 # 1. Send command
                 target.simpleserial_write(cmd, inp)
 
@@ -398,16 +389,12 @@ def run_exp1(target, scope, inplength, N, M, ext_idx = 0, logged=False):
                 if i > 1:
                     scope.glitch.manual_trigger()
                 else:
-                    log_info(f"{now}: [{i+1:04d}/{M}] no glictch", f_log=f_log, p=PRINT_BY_DEFAULT)
+                    log_info(f"{now}: [{i+1:04d}/{M}] no glitch", f_log=f_log, p=PRINT_BY_DEFAULT)
 
                 
                 # 4. Wait remaining time
                 time.sleep(DURATION*(1-(i/(M+1))) + 0.5)
 
-                # time.sleep(0.01)
-                # this_out = target.read()
-                # print(f'this_out: {this_out.encode("latin-1")}')
-                
                 # 5. Check if anything is wrong
                 ret = scope.capture()
 
@@ -424,12 +411,7 @@ def run_exp1(target, scope, inplength, N, M, ext_idx = 0, logged=False):
                     now = datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")
                     if sig[0]: # Collect signature
                         log_info(f"{now}: [{i+1:04d}/{M}] Received sig ... {' '.join([s.hex() for s in sig])}", f_log=f_log, p=PRINT_BY_DEFAULT)
-                        # log_info(f"{now}: [{i+1:04d}/{M}] Received ...", f_log=f_log, p=PRINT_BY_DEFAULT)
                         log_info(f"{now}: [{i+1:04d}/{M}] Received root ... {' '.join([s.hex() for s in root])}", f_log=f_log, p=PRINT_BY_DEFAULT)
-
-                        # 看一下为什么sig是空的时候，没有跳到else那里？
-                        # log_info(f"sig: {sig}", f_log=f_log, p=PRINT_BY_DEFAULT)
-
 
                         if address in collections:
                             collections[address] += [sig]
@@ -437,7 +419,6 @@ def run_exp1(target, scope, inplength, N, M, ext_idx = 0, logged=False):
                             collections[address] = [sig]
                     else: # In case nothing is received
                         log_info(f"{now}: [{i+1:04d}/{M}] Received ... Nothing!", f_log=f_log, p=PRINT_BY_DEFAULT)
-                        # log_info(f"sig: {sig}", f_log=f_log, p=PRINT_BY_DEFAULT)
 
             # Log findings
             now = datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")

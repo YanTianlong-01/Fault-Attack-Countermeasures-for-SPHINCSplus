@@ -203,3 +203,20 @@ def log_info(info, f_log=None, end="\n", p=True):
         print(info, end=end)
     if f_log:
         f_log.write(info + end)
+
+
+if __name__ == "__main__":
+    import sys
+
+    # Firmware folder: the 'simpleserial-sphincsplus' directory that contains the
+    # built .hex. Read it from the CW_FW_FOLDER environment variable, or prompt.
+    fw_folder = os.environ.get("CW_FW_FOLDER", "").strip().strip('"').strip("'")
+    if not fw_folder:
+        fw_folder = input("Please enter the path to the 'simpleserial-sphincsplus' folder (blank to skip flashing): ").strip().strip('"').strip("'")
+
+    (target, scope) = chipwhisperersetup(fw_folder=fw_folder)
+    time.sleep(0.05)
+    print(f"Reading target: {target.read().encode('latin-1')}")
+    target.dis()
+    scope.dis()
+    print("Done.")
